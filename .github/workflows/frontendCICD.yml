@@ -8,6 +8,11 @@ on:
     branches: [ "main" ]
   workflow_dispatch:  # Enables manual trigger
 
+# 🔹 FIX: Add required permissions for OIDC authentication
+permissions:
+  id-token: write   # Required for OIDC authentication
+  contents: read    # Needed to checkout repository
+
 jobs:
   build:
 
@@ -20,6 +25,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Debug Workspace Contents
       run: ls -R  
 
@@ -55,14 +61,14 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
 
-    # Configure AWS credentials using OIDC Role
+    # 🔹 FIX: Configure AWS credentials using OIDC authentication
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v3
       with:
         role-to-assume: arn:aws:iam::273354664814:Murali1/GitHubOIDC  # Replace with your actual AWS Role ARN
         aws-region: ap-south-1
 
-    # Post the package to S3 bucket
+    # Upload the package to S3 bucket
     - name: Upload to S3
       run: aws s3 sync . s3://${{ secrets.AWS_S3_BUCKET }} --delete
       
