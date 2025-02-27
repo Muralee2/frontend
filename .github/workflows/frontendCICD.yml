@@ -55,13 +55,12 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
 
+    # Configure AWS credentials using OIDC Role
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v3  # Upgrade to v3
+      uses: aws-actions/configure-aws-credentials@v3
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        role-to-assume: arn:aws:iam::273354664814:Murali1/GitHubOIDC  # Replace with your actual AWS Role ARN
         aws-region: ap-south-1
-
 
     # Post the package to S3 bucket
     - name: Upload to S3
