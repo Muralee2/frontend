@@ -1,77 +1,41 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, 
-# build the source code, and run tests across different versions of Node.js.
-
-name: frontend_CICD
+name: Deploy Frontend to S3
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:  # Enables manual trigger
-
-# 🔹 FIX: Add required permissions for OIDC authentication
-permissions:
-  id-token: write   # Required for OIDC authentication
-  contents: read    # Needed to checkout repository
+    branches:
+      - main  # Adjust to your deployment branch
+  workflow_dispatch:
 
 jobs:
-  build:
-
+  deploy:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [20.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
-
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Debug Workspace Contents
-      run: ls -R  
+      - name: Install Dependencies & Build Frontend
+        run: |
+          npm install   # Install dependencies
+          npm run build # Build frontend (React/Vue/Angular)
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: package-lock.json
+      - name: Compress Build Folder
+        run: |
+          zip -r frontend-build.zip ./build  # Adjust if using Vue/Angular (dist folder)
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ap-south-1  # Change to your AWS region
 
-    - name: Build frontend
-      run: npm run build --if-present
+      - name: Upload ZIP to S3
+        run: aws s3 cp frontend-build.zip s3://my-tf-saniakurup-bucket/
 
-    - name: SonarQube frontend Scan  # SonarQube scan step
-      uses: sonarsource/sonarqube-scan-action@master
-      with:
-        args: >
-          -Dproject.settings=sonar-project.properties
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
-
-    - name: Check Quality Gate  # Add this step
-      uses: sonarsource/sonarqube-quality-gate-action@master
-      if: always() # Always run to check even if the previous step failed
-      timeout-minutes: 5
-      with:
-        scanTaskId: ${{ steps.sonarqube.outputs.scanTaskId }}
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-        aws-region: ap-south-1
-
-    
-    # Upload the package to S3 bucket
-    - name: Upload to S3
-      run: aws s3 sync . s3://${{ secrets.AWS_S3_BUCKET }} --delete
-      
-    - name: Deploying to EC2 
-      run: aws deploy create-deployment --application-name webapp --deployment-group-name CodeDeployWebapp --github-location repository=${{ github.repository }},commitId=${{ github.sha }} --ignore-application-stop-failures
+      - name: Invalidate CloudFront Cache (Optional)
+        run: |
+          aws cloudfront create-invalidation --distribution-id YOUR_CLOUDFRONT_ID --paths "/*"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
