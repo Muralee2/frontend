@@ -1,72 +1,69 @@
-name: Deploy Frontend to S3
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: frontend_CICD
 
 on:
   push:
-    branches:
-      - main  # Runs on every push to the main branch
-  workflow_dispatch:  # Allows manual trigger
+    branches: [ "main" ]
 
 jobs:
-  deploy:
+  build:
+
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        node-version: [20.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    - name: Debug Workspace Contents
+      run: ls -R  
 
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'  # Set your Node.js version
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
 
-      - name: Install Dependencies
-        run: npm install  
+    - name: Install dependencies
+      run: npm ci
 
-      - name: Build Frontend
-        run: npm run build  
+    - name: Build frontend
+      run: npm run build --if-present
 
-      - name: Debug Build Output
-        run: |
-          echo "Checking available files in the workspace..."
-          ls -l
-          echo "Checking inside possible build directories..."
-          ls -l build/ || echo "No build directory found."
-          ls -l dist/ || echo "No dist directory found."
-          ls -l .next/ || echo "No .next directory found."
-          ls -l out/ || echo "No out directory found."
+    - name: SonarQube frontend Scan  # SonarQube scan step
+      uses: sonarsource/sonarqube-scan-action@master
+      with:
+        args: >
+          -Dproject.settings=sonar-project.properties
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
 
-      - name: Verify Build Directory
-        run: |
-          if [ -d "build" ]; then 
-            echo "Using build directory.";
-            echo "BUILD_DIR=build" >> $GITHUB_ENV;
-          elif [ -d "dist" ]; then 
-            echo "Using dist directory.";
-            echo "BUILD_DIR=dist" >> $GITHUB_ENV;
-          elif [ -d ".next" ]; then 
-            echo "Using Next.js .next directory.";
-            echo "BUILD_DIR=.next" >> $GITHUB_ENV;
-          elif [ -d "out" ]; then 
-            echo "Using Next.js out directory.";
-            echo "BUILD_DIR=out" >> $GITHUB_ENV;
-          else 
-            echo "Error: Build directory not found!";
-            exit 1;
-          fi
+    - name: Check Quality Gate  # Add this step
+      uses: sonarsource/sonarqube-quality-gate-action@master
+      if: always() # Always run to check even if the previous step failed
+      timeout-minutes: 5
+      with:
+        scanTaskId: ${{ steps.sonarqube.outputs.scanTaskId }}
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
 
-      - name: Compress Build Folder
-        run: zip -r frontend-build.zip $BUILD_DIR/
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+        aws-region: ap-south-1 # Replace <your-region> with your AWS region
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-          aws-region: ap-south-1  # Update your AWS region
-
-      - name: Upload ZIP to S3
-        run: aws s3 cp frontend-build.zip s3://my-tf-saniakurup-bucket/
-
-      - name: Deploy to S3 Bucket
-        run: aws s3 sync $BUILD_DIR/ s3://my-tf-saniakurup-bucket/ --delete
-
+    # Post the package to S3 bucket
+    - name: Upload to S3
+      run: aws s3 sync . s3://${{ secrets.AWS_S3_BUCKET }} --delete
+      
+    - name: Deploying to Ec2 
+      run: aws deploy create-deployment --application-name webapp --deployment-group-name CodeDeployWebapp --github-location repository=${{ github.repository }},commitId=${{ github.sha }} --ignore-application-stop-failures
