@@ -20,17 +20,27 @@ jobs:
       - name: Build Frontend
         run: |
           npm run build  
-          ls -l  # Debugging step to verify the build folder exists  
+          echo "Checking available files and folders..."
+          ls -l
+          echo "Checking inside dist/build folders (if they exist)..."
+          ls -l build/ || echo "No build directory found."
+          ls -l dist/ || echo "No dist directory found."
 
       - name: Verify Build Directory
         run: |
-          if [ ! -d "build" ]; then 
-            echo "Error: Build directory not found!"; 
-            exit 1; 
+          if [ -d "build" ]; then 
+            echo "Using build directory.";
+            echo "BUILD_DIR=build" >> $GITHUB_ENV;
+          elif [ -d "dist" ]; then 
+            echo "Using dist directory.";
+            echo "BUILD_DIR=dist" >> $GITHUB_ENV;
+          else 
+            echo "Error: Build directory not found!";
+            exit 1;
           fi
 
       - name: Compress Build Folder
-        run: zip -r frontend-build.zip build/
+        run: zip -r frontend-build.zip $BUILD_DIR/
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -43,4 +53,5 @@ jobs:
         run: aws s3 cp frontend-build.zip s3://my-tf-saniakurup-bucket/
 
       - name: Upload Build Files to S3 (Optional)
-        run: aws s3 sync build/ s3://my-tf-saniakurup-bucket/ --delete
+        run: aws s3 sync $BUILD_DIR/ s3://my-tf-saniakurup-bucket/ --delete
+
