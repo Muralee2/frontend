@@ -17,15 +17,15 @@ jobs:
       - name: Install Dependencies
         run: npm install  
 
-      - name: Build Frontend
+      - name: Build Frontend & Debug Output
         run: |
           npm run build  
-          echo "Checking available files and folders..."
+          echo "Checking available files in the workspace..."
           ls -l
-          echo "Checking inside dist/build folders (if they exist)..."
+          echo "Checking inside possible build directories..."
           ls -l build/ || echo "No build directory found."
           ls -l dist/ || echo "No dist directory found."
-
+      
       - name: Verify Build Directory
         run: |
           if [ -d "build" ]; then 
@@ -34,6 +34,9 @@ jobs:
           elif [ -d "dist" ]; then 
             echo "Using dist directory.";
             echo "BUILD_DIR=dist" >> $GITHUB_ENV;
+          elif [ -d "dist/my-angular-project" ]; then 
+            echo "Using Angular project dist directory.";
+            echo "BUILD_DIR=dist/my-angular-project" >> $GITHUB_ENV;
           else 
             echo "Error: Build directory not found!";
             exit 1;
@@ -54,4 +57,3 @@ jobs:
 
       - name: Upload Build Files to S3 (Optional)
         run: aws s3 sync $BUILD_DIR/ s3://my-tf-saniakurup-bucket/ --delete
-
