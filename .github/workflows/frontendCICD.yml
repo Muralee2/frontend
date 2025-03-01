@@ -1,24 +1,25 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+# This workflow will do a clean installation of node dependencies, cache/restore them,
+# build the source code, run tests, scan with SonarQube, and deploy to AWS S3 & EC2.
 
 name: frontend_CICD
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]  # Runs automatically on push to main branch
+  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [20.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+        node-version: [20.x]  # Set Node.js version
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
     - name: Debug Workspace Contents
       run: ls -R  
 
@@ -29,13 +30,13 @@ jobs:
         cache: 'npm'
         cache-dependency-path: package-lock.json
 
-    - name: Install dependencies
+    - name: Install Dependencies
       run: npm ci
 
-    - name: Build frontend
+    - name: Build Frontend
       run: npm run build --if-present
 
-    - name: SonarQube frontend Scan  # SonarQube scan step
+    - name: SonarQube Frontend Scan
       uses: sonarsource/sonarqube-scan-action@master
       with:
         args: >
@@ -44,9 +45,9 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
 
-    - name: Check Quality Gate  # Add this step
+    - name: Check SonarQube Quality Gate
       uses: sonarsource/sonarqube-quality-gate-action@master
-      if: always() # Always run to check even if the previous step failed
+      if: always()  # Ensures the check runs even if the scan fails
       timeout-minutes: 5
       with:
         scanTaskId: ${{ steps.sonarqube.outputs.scanTaskId }}
@@ -54,16 +55,17 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
 
-    - name: Configure AWS credentials
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-        aws-region: ap-south-1 # Replace <your-region> with your AWS region
+        aws-region: ap-south-1  # Update to your AWS region
 
-    # Post the package to S3 bucket
     - name: Upload to S3
       run: aws s3 sync . s3://${{ secrets.AWS_S3_BUCKET }} --delete
       
-    - name: Deploying to Ec2 
+    - name: Deploy to EC2
       run: aws deploy create-deployment --application-name webapp --deployment-group-name CodeDeployWebapp --github-location repository=${{ github.repository }},commitId=${{ github.sha }} --ignore-application-stop-failures
+
+ 
