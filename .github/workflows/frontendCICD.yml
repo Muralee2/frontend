@@ -3,8 +3,8 @@ name: Deploy Frontend to S3
 on:
   push:
     branches:
-      - main  
-  workflow_dispatch:
+      - main  # Runs on every push to the main branch
+  workflow_dispatch:  # Allows manual trigger
 
 jobs:
   deploy:
@@ -14,18 +14,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'  # Set your Node.js version
+
       - name: Install Dependencies
         run: npm install  
 
-      - name: Build Frontend & Debug Output
+      - name: Build Frontend
+        run: npm run build  
+
+      - name: Debug Build Output
         run: |
-          npm run build  
           echo "Checking available files in the workspace..."
           ls -l
           echo "Checking inside possible build directories..."
           ls -l build/ || echo "No build directory found."
           ls -l dist/ || echo "No dist directory found."
-      
+          ls -l .next/ || echo "No .next directory found."
+          ls -l out/ || echo "No out directory found."
+
       - name: Verify Build Directory
         run: |
           if [ -d "build" ]; then 
@@ -34,9 +43,12 @@ jobs:
           elif [ -d "dist" ]; then 
             echo "Using dist directory.";
             echo "BUILD_DIR=dist" >> $GITHUB_ENV;
-          elif [ -d "dist/my-angular-project" ]; then 
-            echo "Using Angular project dist directory.";
-            echo "BUILD_DIR=dist/my-angular-project" >> $GITHUB_ENV;
+          elif [ -d ".next" ]; then 
+            echo "Using Next.js .next directory.";
+            echo "BUILD_DIR=.next" >> $GITHUB_ENV;
+          elif [ -d "out" ]; then 
+            echo "Using Next.js out directory.";
+            echo "BUILD_DIR=out" >> $GITHUB_ENV;
           else 
             echo "Error: Build directory not found!";
             exit 1;
@@ -46,14 +58,15 @@ jobs:
         run: zip -r frontend-build.zip $BUILD_DIR/
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-          aws-region: ap-south-1  
+          aws-region: ap-south-1  # Update your AWS region
 
       - name: Upload ZIP to S3
         run: aws s3 cp frontend-build.zip s3://my-tf-saniakurup-bucket/
 
-      - name: Upload Build Files to S3 (Optional)
+      - name: Deploy to S3 Bucket
         run: aws s3 sync $BUILD_DIR/ s3://my-tf-saniakurup-bucket/ --delete
+
